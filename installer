@@ -1,0 +1,72 @@
+#!/bin/sh
+set -eu
+SCRIPT_DIR="$(realpath -- "$(dirname -- "$0")")"
+readonly SCRIPT_DIR
+print() { printf "%b%b" "${1-""}" "${2-"\\n"}"; }
+stderr() { print "$@" 1>&2; }
+reportError() {
+	stderr "$2"
+	return "$1"
+}
+verbosePrint() { { test -n "${VERBOSE_MODE+x}" && stderr "$@"; } || true; }
+
+commandv() { command -v "$1" || reportError "$?" "Executable '$1' not found"; }
+
+if [ -n "${INVOKED_BY_INSTALLER+'x'}" ]; then
+	reportError 1 "Fatal: INVOKED_BY_INSTALLER env is set which indicates as recursive call."
+fi
+export INVOKED_BY_INSTALLER=1
+
+vexec() {
+	stderr "Executing: $*"
+	"$@"
+}
+
+fetch() {
+	if command -v curl >/dev/null; then
+		vexec curl -fsSL "$1"
+	else
+		vexec wget -qO- "$1"
+	fi
+}
+
+COMPONENTS="${COMPONENTS:?"Set COMPONENTS env to specify which components to install"}"
+
+BASE_DOMAIN="${BASE_DOMAIN:-"github.com"}"
+BASE_URL="${BASE_URL:-"https://${BASE_DOMAIN}/MidnightRocket/linux-update-scripts"}"
+
+BRANCH="${BRANCH:-"main"}"
+REF="${REF:-"heads/$BRANCH"}"
+
+export TAR_DOWNLOAD_PATH="${TAR_DOWNLOAD_PATH:-"$BASE_URL/archive/refs/${REF}.tar.gz"}"
+
+cleanupTmpDir() { rm -rf "$TMP_DIR"; }
+# On MacOS have to force parent dir to /tmp otherwise may path
+# be too long for some commands. E.g. SSH creating socket control master.
+TMP_DIR="$(mktemp -d --suffix ".linux-update-scripts" -p "/tmp")"
+readonly TMP_DIR
+trap 'cleanupTmpDir; trap - EXIT' EXIT INT HUP TERM # Safely remove tmp dir on exit or interrupt
+
+SOURCE_DIR="$TMP_DIR/source"
+mkdir "$SOURCE_DIR"
+
+cd "$SOURCE_DIR"
+
+fetch "$TAR_DOWNLOAD_PATH" | tar -xz -C "$SOURCE_DIR" --strip-components=1
+
+resolveInstallers() {
+	print "$1" | tr ',' '\n' | while read _COMP; do
+		_INSTALLER="$SOURCE_DIR/$_COMP"
+		if test -d "$SOURCE_DIR/$_COMP" && test -n "$_COMP"; then
+			_INSTALLER="$(find "$_INSTALLER" -type f -path "${_INSTALLER%"/"}/install*" -perm -1 | head -n 1)"
+		fi
+		test -x "$_INSTALLER" -a -f "$_INSTALLER" || reportError 1 "'$_COMP' is not a valid installer component"
+		print "$_INSTALLER"
+	done
+}
+
+INSTALLERS="$(resolveInstallers "$COMPONENTS")"
+
+print "$INSTALLERS" | while read _INST; do
+	cd "$(dirname -- "$_INST")" && vexec env CURRENT_COMPONENT="${_INST#"$SOURCE_DIR/"}" "$_INST"
+done
