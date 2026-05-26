@@ -3,7 +3,7 @@ set -eu
 
 # --- README --- #
 # to run use
-# curl -fsSL https://raw.githubusercontent.com/MidnightRocket/linux-update-scripts/installer | sudo COMPONENTS="debian" sh
+# curl -fsSL https://github.com/MidnightRocket/linux-update-scripts/raw/refs/heads/main/installer | sudo COMPONENTS=debian sh
 #
 #
 # --- --- ---
@@ -35,9 +35,11 @@ install -m 755 "$baseName" "/usr/local/sbin/$baseName"
 configDir="/etc/updateroutine"
 hooksDir="${configDir}/hooks"
 
-vexec install -m 755 -d "$hooksDir"
+if ! test -d "$hooksDir"; then
+	vexec install -m 755 -d "$hooksDir"
 
-vexec cp -r "hooks/." "$hooksDir"
+	vexec cp -pr "hooks/." "$hooksDir"
+fi
 
 # --- Download systemd unit files
 unitsDir="/etc/systemd/system"

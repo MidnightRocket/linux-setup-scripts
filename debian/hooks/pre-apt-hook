@@ -1,7 +1,7 @@
 #!/bin/sh
 # Script which gets called before apt update routine is run
 
-CURRENTDIR="$(dirname "$(realpath "$0")")"
+SCRIPT_DIR="$(realpath "$(dirname -- "$0")")"
+readonly SCRIPT_DIR
 
-# Your script goes here: 
-
+# Your script goes here:

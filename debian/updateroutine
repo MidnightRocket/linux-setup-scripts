@@ -1,16 +1,16 @@
 #!/bin/sh
+set -eu
 
 # POSIX compliant implementation
 # https://stackoverflow.com/a/52586842
-if [ "$(id -u)" -ne 0 ];then
+if [ "$(id -u)" -ne 0 ]; then
 	echo "Requires root!"
 	exec sudo "$0" "$@"
 	# Automatically rerun script with root
 fi
 
-
-wall="$(command -v wall)"
-msg="$(cat <<EOF
+msg="$(
+	cat <<EOF
 Update... Use: 
 sudo journalctl -f -b -u weekly-update.service
 To watch
@@ -19,61 +19,44 @@ EOF
 
 wall -n "$msg"
 
-
 # --- Logging
-
-
-date="$(command -v date)"
-tail="$(command -v tail)"
-
-logFile="/var/log/updateroutine.log"
-echo "Updating: $($date +'%a %e %b %4Y %H:%M')" >> $logFile
-# Trim log file to 25 lines
-# https://unix.stackexchange.com/a/310871
-echo "$($tail -n 25 $logFile)" > $logFile
-
 
 runHook() {
 	baseDir="/etc/updateroutine/hooks"
 	script="${baseDir}/$1"
-	if [ -x "$script" ]; then
-		$script
-	fi
+	echo "Running hook: $1"
+	"$script"
 }
-
 
 # --- Pre apt routine
 
 runHook pre-apt-hook
 
-
-
-
 # --- Apt routine
 
-apt="$(command -v apt)"
-
-
-$apt update -q -y
-$apt full-upgrade -q  -y
-$apt autoclean -q -y
-$apt autoremove -q -y
+apt update -q -y
+apt full-upgrade -q -y
+apt autoremove -q -y --purge
 
 # --- Post apt routine
 
 runHook post-apt-hook
 
-
 # --- Reboot
+
+if ! test -e "/var/run/reboot-required"; then
+	echo "No reboot required"
+	exit 0
+fi
 
 time="60"
 msg="System reboot in $time second(s)"
 wall -t 30 -n "$msg"
 echo "$msg"
 
-sleep $time
+sleep "$time"
 
-# On dietpi systems: 
+# On dietpi systems:
 # https://github.com/MichaIng/DietPi/issues/4555#issuecomment-933622980
 # Need to use with now
 
