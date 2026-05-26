@@ -1,112 +1,43 @@
 #!/bin/sh
+set -eu
 
 # --- README --- #
-# to run use 
-# curl -fsSL https://raw.githubusercontent.com/MidnightRocket/linux-update-scripts/main/debian/install | sudo sh
+# to run use
+# curl -fsSL https://raw.githubusercontent.com/MidnightRocket/linux-update-scripts/installer | sudo COMPONENTS="debian" sh
 #
 #
 # --- --- ---
 
+print() { printf "%b%b" "${1-""}" "${2-"\\n"}"; }
+stderr() { print "$@" 1>&2; }
+
+systemctl="$(command -v systemctl)"
+
+vexec() {
+	stderr "Executing: $*"
+	"$@"
+}
+
 # POSIX compliant implementation
 # https://stackoverflow.com/a/52586842
-if [ "$(id -u)" -ne 0 ];then
-	echo "Requires root!"
+if [ "$(id -u)" -ne 0 ]; then
+	stderr "Requires root!"
 	exit 1
 	# exec sudo "$0" "$@"
 	# Automatically rerun script with root
 fi
 
-
-
-mktemp="$(command -v mktemp)"
-cat="$(command -v cat)"
-curl="$(command -v curl)"
-sha256sum="$(command -v sha256sum)"
-
-
-TMPDIR="$($mktemp -d)"
-trap 'rm -rf -- "$TMPDIR"' EXIT
-
-
-# downloadFile url sha256sum save-path
-downloadFile() {
-	url="$1"
-	shasum="$2"
-	saveTo="$3"
-
-	tmpFile="$($mktemp -p $TMPDIR)"
-	$curl -f $1 -o $tmpFile
-	
-	if [ "$?" -ne 0 ]; then
-		echo "Could not download file from: $url"
-		exit 1
-	fi
-	
-	echo "$shasum $tmpFile" | $sha256sum --status -c
-
-	if [ "$?" -ne 0 ]; then
-		echo "Failed to validate file from: $url"
-		echo "File sha256sum mismatch!"
-		echo "Wanted: $($sha256sum $tmpFile)"
-		echo "But got: $shasum"
-		exit 2
-	fi
-	
-	echo "installing to: $saveTo"
-	cp $tmpFile $saveTo
-}
-
-baseUrl="https://raw.githubusercontent.com/MidnightRocket/linux-update-scripts/main/debian"
-
-
-
-# --- Download updater 
-
 baseName="updateroutine"
-updateFile="/usr/local/sbin/$baseName"
-downloadFile ${baseUrl}/$baseName 815f9f52f0a54f21788d5109a2f5af6dd98efe0bab264b4e8c9004e93d649ff9 $updateFile
-
-
-chmod 755 "$updateFile"
-
-
+install -m 755 "$baseName" "/usr/local/sbin/$baseName"
 
 # --- Create hook directory
 
 configDir="/etc/updateroutine"
 hooksDir="${configDir}/hooks"
 
-if [ ! -d "$configDir" ]; then
-	echo "Creating config dir in: $configDir"
-	mkdir $configDir
-	chmod 755 "$configDir"
-fi
+vexec install -m 755 -d "$hooksDir"
 
-if [ ! -d "$hooksDir" ]; then 
-	mkdir $hooksDir
-	chmod 755 "$hooksDir"
-
-	baseName="pre-apt-hook"
-	file="$hooksDir/$baseName"
-	downloadFile ${baseUrl}/hooks/$baseName da8ac8ff8e672a477a1dc18c97f340868ffa97b1bf43e0883c24ad111f5d586e $file
-	chmod 755 "$file"
-	echo "Created file $file"
-
-	baseName="post-apt-hook"
-	file="$hooksDir/$baseName"
-	downloadFile ${baseUrl}/hooks/$baseName 51f8d50d4000d59491d4628037da575fd69182f6a0e6f0c631848c7a5738cc2e $file
-	chmod 755 "$file"
-	echo "Created file $file"
-fi
-
-
-
-
-
-
-
-
-
+vexec cp -r "hooks/." "$hooksDir"
 
 # --- Download systemd unit files
 unitsDir="/etc/systemd/system"
@@ -114,27 +45,25 @@ unitsDir="/etc/systemd/system"
 serviceUnit="weekly-update.service"
 baseName="$serviceUnit"
 file="$unitsDir/$baseName"
-downloadFile ${baseUrl}/systemd/$baseName f54441c773cf7425a83a006c9a04c1666a9d3cc716ddf902682859393568fe11 $file
+vexec install -m 600 "systemd/$baseName" "$file"
 
 timerUnit="weekly-update.timer"
 baseName="$timerUnit"
 file="$unitsDir/$baseName"
-downloadFile ${baseUrl}/systemd/$baseName a8ce0d6b99d58a9723b876de20fb92c57448ca14979e9396457c2356385a0d67 $file
+vexec install -m 600 "systemd/$baseName" "$file"
 
+"$systemctl" enable --now "$timerUnit"
+"$systemctl" status "$timerUnit"
 
-systemctl="$(command -v systemctl)"
-$systemctl enable --now $timerUnit
-$systemctl status $timerUnit
+stderr
+stderr "To run update now use:"
+stderr "\tsudo systemctl start $serviceUnit"
+stderr
+stderr "To view logs use: "
+stderr "\tsudo journalctl -f -b -u $serviceUnit"
 
-echo 
-echo "To run update now use:" 
-echo "\tsudo systemctl start $serviceUnit"
-echo
-echo "To view logs use: "
-echo "\tsudo journalctl -f -b -u $serviceUnit"
-
-echo
-echo "To disable automatic update use" 
-echo "\tsudo systemctl disable $timerUnit"
-echo "and to cancel current timer use"
-echo "\tsudo systemctl stop $timerUnit"
+stderr
+stderr "To disable automatic update use"
+stderr "\tsudo systemctl disable $timerUnit"
+stderr "and to cancel current timer use"
+stderr "\tsudo systemctl stop $timerUnit"
