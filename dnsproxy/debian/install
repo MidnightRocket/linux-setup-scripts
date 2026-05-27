@@ -1,5 +1,4 @@
 #!/bin/sh
-
 # --- README --- #
 # to run use
 # curl -fsSL https://github.com/MidnightRocket/linux-update-scripts/raw/refs/heads/main/installer | sudo COMPONENTS=dnsproxy/debian sh
@@ -7,21 +6,8 @@
 #
 # --- --- ---
 
-set -eu
-print() { printf "%b%b" "${1-""}" "${2-"\\n"}"; }
-stderr() { print "$@" 1>&2; }
-
-# POSIX compliant implementation
-# https://stackoverflow.com/a/52586842
-if [ "$(id -u)" -ne 0 ]; then
-	stderr "Requires root!"
-	exec sudo "$0" "$@"
-	# Automatically rerun script with root
-fi
-vexec() {
-	stderr "Executing: $*"
-	"$@"
-}
+. "$INSTALLER_LIB_DIR/init"
+. "$INSTALLER_LIB_DIR/require-root"
 
 binDir="/usr/local/bin"
 
@@ -75,7 +61,7 @@ downloadDNSProxy() {
 	FILENAME="dnsproxy-$PLATFORM-$LATEST.tar.gz"
 	URL="${REPO}/releases/download/${LATEST}/$FILENAME"
 	stderr "Downloading from: $URL"
-	curl -L "$URL" -o "$TMP_DIR/$FILENAME" --compressed -H "Accept-Encoding: zstd, gzip, deflate"
+	curl -fsSL "$URL" -o "$TMP_DIR/$FILENAME" --compressed -H "Accept-Encoding: zstd, gzip, deflate"
 
 	"$tar" -C "$TMP_DIR" --strip-components=2 -zxf "$TMP_DIR/$FILENAME" "./$PLATFORM/dnsproxy"
 }
@@ -86,7 +72,7 @@ file="${TMP_DIR}/dnsproxy"
 
 if [ -f "$file" ]; then
 	stderr "success downloading file"
-	stderr "moving dnsproxy"
+	stderr "Installing dnsproxy"
 	vexec install -m 755 "$file" "$binDir/dnsproxy"
 else
 	stderr "Failed to download dnsproxy" 1>&2

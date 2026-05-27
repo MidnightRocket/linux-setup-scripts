@@ -1,0 +1,29 @@
+#!/bin/sh
+
+. "$INSTALLER_LIB_DIR/init"
+
+if [ -n "${INVOKED_BY_INSTALLER+'x'}" ]; then
+	reportError 1 "Fatal: INVOKED_BY_INSTALLER env is set which indicates a recursive call."
+fi
+export INVOKED_BY_INSTALLER=1
+
+COMPONENTS="${COMPONENTS:?"Set COMPONENTS env to specify which components to install"}"
+
+resolveInstallers() {
+	printf "%s" "$1" | awk -v RS=',' 'NF > 0 && !x[$0]++' | while read _COMP; do
+		_INSTALLER="$SOURCE_DIR/$_COMP"
+		if test -d "$SOURCE_DIR/$_COMP" && test -n "$_COMP"; then
+			_INSTALLER="$(find "$_INSTALLER" -type f -path "${_INSTALLER%"/"}/install*" -perm -1 | head -n 1)"
+		fi
+		test -x "$_INSTALLER" -a -f "$_INSTALLER" || reportError 1 "'$_COMP' is not a valid installer component"
+		print "$_INSTALLER"
+	done
+}
+
+INSTALLERS="$(resolveInstallers "$COMPONENTS")"
+
+export MODE="${MODE:-"install"}" # possible modes: install, update
+
+print "$INSTALLERS" | while read _INST; do
+	cd "$(dirname -- "$_INST")" && dryexec env CURRENT_COMPONENT="${_INST#"$SOURCE_DIR/"}" "$_INST"
+done

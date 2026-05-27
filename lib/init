@@ -1,0 +1,30 @@
+#!/bin/sh
+set -eu
+
+[ -n "${INIT_LOADED+'x'}" ] && return 0
+INIT_LOADED=1
+
+print() { printf "%b%b" "${1-""}" "${2-"\\n"}"; }
+stderr() { print "$@" >&2; }
+
+commandv() { command -v "$1" || reportError "$?" "Executable '$1' not found"; }
+
+. "$INSTALLER_LIB_DIR/color"
+reportError() {
+	cstderr "${TF_RED}$2"
+	return "$1"
+}
+verbosePrint() { { test -n "${VERBOSE_MODE+x}" && cstderr "$@"; } || true; }
+
+vexec() {
+	cstderr "${TF_DARK_GRAY}Executing: $*"
+	"$@"
+}
+
+dryexec() {
+	if [ -n "${DRYRUN_MODE+x}" ]; then
+		cstderr "${TF_BRIGHT_RED}dryrun: $*"
+	else
+		vexec "$@"
+	fi
+}

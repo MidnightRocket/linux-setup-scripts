@@ -1,6 +1,4 @@
 #!/bin/sh
-set -eu
-
 # --- README --- #
 # to run use
 # curl -fsSL https://github.com/MidnightRocket/linux-update-scripts/raw/refs/heads/main/installer | sudo COMPONENTS=debian sh
@@ -8,24 +6,10 @@ set -eu
 #
 # --- --- ---
 
-print() { printf "%b%b" "${1-""}" "${2-"\\n"}"; }
-stderr() { print "$@" 1>&2; }
+. "$INSTALLER_LIB_DIR/init"
+. "$INSTALLER_LIB_DIR/require-root"
 
-systemctl="$(command -v systemctl)"
-
-vexec() {
-	stderr "Executing: $*"
-	"$@"
-}
-
-# POSIX compliant implementation
-# https://stackoverflow.com/a/52586842
-if [ "$(id -u)" -ne 0 ]; then
-	stderr "Requires root!"
-	exit 1
-	# exec sudo "$0" "$@"
-	# Automatically rerun script with root
-fi
+systemctl="$(commandv systemctl)"
 
 baseName="updateroutine"
 install -m 755 "$baseName" "/usr/local/sbin/$baseName"

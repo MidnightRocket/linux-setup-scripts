@@ -1,0 +1,5 @@
+#!/bin/sh
+# https://stackoverflow.com/a/52586842
+if [ "${EUID:-"$(id -u)"}" -ne 0 ]; then
+	reportError 126 "Must be run with root"
+fi
