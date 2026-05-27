@@ -1,173 +1,97 @@
 #!/bin/sh
 
 # --- README --- #
-# to run use 
-# curl -fsSL https://raw.githubusercontent.com/MidnightRocket/linux-update-scripts/main/dnsproxy/debian/install | sudo sh
+# to run use
+# curl -fsSL https://github.com/MidnightRocket/linux-update-scripts/raw/refs/heads/main/installer | sudo COMPONENTS=dnsproxy/debian sh
 #
 #
 # --- --- ---
 
+set -eu
+print() { printf "%b%b" "${1-""}" "${2-"\\n"}"; }
+stderr() { print "$@" 1>&2; }
+
 # POSIX compliant implementation
 # https://stackoverflow.com/a/52586842
-if [ "$(id -u)" -ne 0 ];then
-	echo "Requires root!"
+if [ "$(id -u)" -ne 0 ]; then
+	stderr "Requires root!"
 	exec sudo "$0" "$@"
 	# Automatically rerun script with root
 fi
-
-
-
-mktemp="$(command -v mktemp)"
-cat="$(command -v cat)"
-curl="$(command -v curl)"
-sha256sum="$(command -v sha256sum)"
-
-
-TMPDIR="$($mktemp -d)"
-trap 'rm -rf -- "$TMPDIR"' EXIT
-
-
-# downloadFile url sha256sum save-path
-downloadFile() {
-	url="$1"
-	shasum="$2"
-	saveTo="$3"
-
-	tmpFile="$($mktemp -p $TMPDIR)"
-	$curl -f $1 -o $tmpFile
-	
-	if [ "$?" -ne 0 ]; then
-		echo "Could not download file from: $url"
-		exit 1
-	fi
-	
-	echo "$shasum $tmpFile" | $sha256sum --status -c
-
-	if [ "$?" -ne 0 ]; then
-		echo "Failed to validate file from: $url"
-		echo "File sha256sum mismatch!"
-		echo "Wanted: $($sha256sum $tmpFile)"
-		echo "But got: $shasum"
-		exit 2
-	fi
-	
-	echo "installing to: $saveTo"
-	cp $tmpFile $saveTo
+vexec() {
+	stderr "Executing: $*"
+	"$@"
 }
-
-baseUrl="https://raw.githubusercontent.com/MidnightRocket/linux-update-scripts/main/dnsproxy/debian"
-
-
 
 binDir="/usr/local/bin"
 
-
-
 baseName="dnsproxy-wrapper"
-file="$binDir/$baseName"
-downloadFile ${baseUrl}/$baseName fd876e38a16c12f688e1442c32f3b58d5a3ac0b6563dd721d14d29388c4e4b3a $file
-# Must be executable
-chmod 755 $file
-
-
+dst="$binDir/$baseName"
+vexec install -m 755 "$baseName" "$dst"
 
 # --- Create config directory
 
 configDir="/etc/dnsproxy-configs"
 
 if [ ! -d "$configDir" ]; then
-	echo "Creating config dir in: $configDir"
-	mkdir $configDir
-	chmod 755 "$configDir"
+	stderr "Creating config dir in: $configDir"
+	vexec install -m 755 -d "$configDir"
 
-	baseName="config.conf"
-	file="$configDir/$baseName"
-	downloadFile "${baseUrl}/configs/$baseName" "ae499ba1031e67a25adeba426da9a61bc013af1a813078a62b595857e9868b92" "$file"
-	# config.conf need to execute as it is a script
-	chmod 755 $file
-
-
-	baseName="upstream"
-	file="$configDir/$baseName"
-	downloadFile ${baseUrl}/configs/$baseName 2a243445c1845dd2b2cb32ec7f10033dd23e2eab63c885028e389c31a8bb86e3 $file
-	baseName="fallback"
-	file="$configDir/$baseName"
-	downloadFile ${baseUrl}/configs/$baseName 97ddc81ac24901654b1ce226640d85bde5773d46969a6123dc24f9bafbcc7aa0 $file
+	vexec cp -r "configs/." "$configDir"
 fi
-
-
-
 
 # https://github.com/joshcangit/dnsproxy-resolvconf/blob/4353c5e2cee12779c392947d09dae84504ac7a05/dnsproxy-setup.sh#L19
 #
 # use uname -m to get archtype
-
-
 getArchtype() {
 	arch="$(uname -m)"
 	case "$arch" in
-		*x86_64*) 
-			echo "386";;
-		*aarch64*)
-			echo "arm64";;
+	*x86_64*)
+		print "386"
+		;;
+	*aarch64*)
+		print "arm64"
+		;;
 	esac
 }
 
-
 REPO="https://github.com/AdguardTeam/dnsproxy"
 getLatestVersion() {
-
-	$curl -ISs "${REPO}/releases/latest" | grep -i ^location: | sed 's/.*\/\([v0-9.]\+\).*/\1/'
-}
-
-
-getFileName() {
-	echo "dnsproxy-linux-$(getArchtype)-$1.tar.gz"
+	curl -ISsf "${REPO}/releases/latest" | awk -F '[:/]' '$1 == "location" {sub("\r", "", $NF); print $NF}'
 }
 
 tar="$(command -v tar)"
 
+cleanupTmpDir() { rm -rf "$TMP_DIR"; }
+TMP_DIR="$(mktemp -d --suffix ".dnsproxy-downloader" -p "/tmp")"
+readonly TMP_DIR
+trap 'cleanupTmpDir; trap - EXIT' EXIT INT HUP TERM # Safely remove tmp dir on exit or interrupt
+
 downloadDNSProxy() {
-	local LATEST="$(getLatestVersion)"
-	local FILENAME="$(getFileName $LATEST)"
-	local URL="${REPO}/releases/download/${LATEST}/$FILENAME"
-	printf "Downloading from: "
-	echo "$URL"
-	$curl -L $URL -o "$TMPDIR/$FILENAME" --compressed -H "Accept-Encoding: zstd, gzip, deflate"
+	stderr "Fetching DNS proxy"
+	LATEST="$(getLatestVersion)"
+	stderr "Latest version is '$LATEST'"
+	PLATFORM="linux-$(getArchtype)"
+	FILENAME="dnsproxy-$PLATFORM-$LATEST.tar.gz"
+	URL="${REPO}/releases/download/${LATEST}/$FILENAME"
+	stderr "Downloading from: $URL"
+	curl -L "$URL" -o "$TMP_DIR/$FILENAME" --compressed -H "Accept-Encoding: zstd, gzip, deflate"
 
-	echo "$TMPDIR"
-
-	local TPATH=$($tar -ztf $TMPDIR/$FILENAME | grep dnsproxy$)
-	local RDIR=$(echo $TPATH | sed 's/^\.\///;s/dnsproxy$//')
-	$tar -C $TMPDIR -zxf $TMPDIR/$FILENAME $TPATH
-	mv -f $TMPDIR/${RDIR}dnsproxy $TMPDIR/dnsproxy
-
-
-	# interactive shell for debugging 
-	#IN_CUSTOM_SHELL="test-dnsproxy" TMPDIR="$TMPDIR" zsh
+	"$tar" -C "$TMP_DIR" --strip-components=2 -zxf "$TMP_DIR/$FILENAME" "./$PLATFORM/dnsproxy"
 }
 
 downloadDNSProxy
 
-
-file="${TMPDIR}/dnsproxy"
+file="${TMP_DIR}/dnsproxy"
 
 if [ -f "$file" ]; then
-	echo "success downloading file"
-	echo "moving dnsproxy"
-	mv "$file" "$binDir/dnsproxy"
+	stderr "success downloading file"
+	stderr "moving dnsproxy"
+	vexec install -m 755 "$file" "$binDir/dnsproxy"
 else
-	echo "Failed to download dnsproxy" 1>&2
+	stderr "Failed to download dnsproxy" 1>&2
 	exit 1
 fi
-
-
-
-
-
-
-
-
 
 # --- Download systemd unit files
 unitsDir="/etc/systemd/system"
@@ -175,56 +99,32 @@ unitsDir="/etc/systemd/system"
 serviceUnit="dnsproxy.service"
 baseName="$serviceUnit"
 file="$unitsDir/$baseName"
-downloadFile ${baseUrl}/systemd/$baseName ac1bf78d8034f52e3f64073ff8d31b2f90579e0bb2fffc7e928b6b4c7cb02e8f $file
-
-
+vexec install -m 600 "systemd/$baseName" "$file"
 
 systemctl="$(command -v systemctl)"
 
 user="_dnsproxy"
 
-
-migrateUser() {
-	olduser="dnsproxy"
-	echo "Checking for user migration"
-	if id -u "$user" >/dev/null 2>&1; then
-		echo "Already migrated to user '$user'"
-		return 0 # Return function as success becuase no migration is needed
-	fi
-
-	echo "Migrating to new user '$user'"
-
-	usermod "$olduser" -l "$user" -d /nonexistent
-	groupmod "$olduser" -n "$user"
-	chown "$user":"$user" -R $configDir
-}
-
-
-if [ "$1" = "--update" ]; then
-	$systemctl stop $serviceUnit
-	migrateUser
-	$systemctl daemon-reload
-	$systemctl start $serviceUnit
+if [ "${MODE:-"install"}" = "update" ]; then
+	vexec "$systemctl" stop "$serviceUnit"
+	vexec "$systemctl" daemon-reload
+	vexec "$systemctl" start "$serviceUnit"
 else
 	# Creates system user with no homedir, no login shell
 	# And automatically creates matching group i.e. '_dnsproxy'
 	useradd -U --home-dir /nonexistent -M -s /usr/sbin/nologin --system "$user"
 
 	# Make dnsproxy user owner of $configDir
-	chown "$user":"$user" -R $configDir
+	chown "$user":"$user" -R "$configDir"
 
-
-	$systemctl enable --now $serviceUnit
+	vexec "$systemctl" enable --now "$serviceUnit"
 fi
 
+"$systemctl" status $serviceUnit
 
-
-$systemctl status $serviceUnit
-
-echo 
-echo "To restart service use" 
-echo "\tsudo systemctl restart $serviceUnit"
-echo
-echo "To view logs use: "
-echo "\tsudo journalctl -f -b -u $serviceUnit"
-
+stderr
+stderr "To restart service use"
+stderr "\tsudo systemctl restart $serviceUnit"
+stderr
+stderr "To view logs use: "
+stderr "\tsudo journalctl -f -b -u $serviceUnit"
