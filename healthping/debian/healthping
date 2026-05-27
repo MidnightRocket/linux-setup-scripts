@@ -8,18 +8,54 @@ if [ ! -f "$URLS_FILE" ]; then
 	exit 1
 fi
 
-
 curl="$(command -v curl)"
 awk="$(command -v awk)"
 
 readonly OUTPUT_FILE="/dev/null"
 
+AWK_PROG="$(
+	cat <<-'EOF'
+		NF == 0 || /^[[:space:]]*#/ {next}
+
+		function handleSetting(setting) {
+			if (setting == "token") {
+				printf("header=\"Authorization: Bearer %s\";", $3)
+				return
+			}
+			if (setting == "method") {
+				printf("request=\"%s\";", toupper($3))
+				return
+			}
+			printf("Setting '%s' is not valid!\n", $2) > "/dev/stderr"
+			exit(1)
+		}
+
+		$1 == "use" {
+			handleSetting($2)
+			next
+		}
+
+		{
+			printf("url=\"%s\"\n", $1)
+		}
+	EOF
+)"
 
 loadConfigs() {
-	"$awk" 'NF > 0 && !/^[[:space:]]*#/' "$URLS_FILE" | while read -r line; do
-		printf 'url="%b"\noutput="%b"\n' "$line" "$OUTPUT_FILE"
+	"$awk" "$AWK_PROG" "$1"
+}
+
+dispatch() {
+	export _CONF
+	_PIDS=""
+	while read _CONF; do
+		printenv _CONF | tr ';' '\n' | "$curl" --output "${OUTPUT:-"/dev/null"}" --no-progress-meter --fail --silent --show-error --max-time 10 --retry 5 --config - &
+		_PIDS="$_PIDS $!"
+		sleep 1
+	done
+	for p in $_PIDS; do
+		wait "$p"
 	done
 }
 
-
-loadConfigs | "$curl" --no-progress-meter --fail --silent --show-error --max-time 10 --retry 5 --parallel --parallel-immediate --config -
+loadConfigs "$URLS_FILE" | dispatch
