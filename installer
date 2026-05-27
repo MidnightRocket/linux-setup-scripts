@@ -13,13 +13,22 @@ verbosePrint() { { test -n "${VERBOSE_MODE+x}" && stderr "$@"; } || true; }
 commandv() { command -v "$1" || reportError "$?" "Executable '$1' not found"; }
 
 if [ -n "${INVOKED_BY_INSTALLER+'x'}" ]; then
-	reportError 1 "Fatal: INVOKED_BY_INSTALLER env is set which indicates as recursive call."
+	reportError 1 "Fatal: INVOKED_BY_INSTALLER env is set which indicates a recursive call."
 fi
 export INVOKED_BY_INSTALLER=1
 
 vexec() {
 	stderr "Executing: $*"
 	"$@"
+}
+
+dryexec() {
+	if [ -n "${DRYRUN_MODE+x}" ]; then
+		printf "dryrun: %s\n" "$*" >&2
+	else
+		stderr "Executing: $*"
+		"$@"
+	fi
 }
 
 fetch() {
@@ -55,7 +64,7 @@ cd "$SOURCE_DIR"
 fetch "$TAR_DOWNLOAD_PATH" | tar -xz -C "$SOURCE_DIR" --strip-components=1
 
 resolveInstallers() {
-	print "$1" | tr ',' '\n' | while read _COMP; do
+	printf "%s" "$1" | awk -v RS=',' 'NF > 0 && !x[$0]++' | while read _COMP; do
 		_INSTALLER="$SOURCE_DIR/$_COMP"
 		if test -d "$SOURCE_DIR/$_COMP" && test -n "$_COMP"; then
 			_INSTALLER="$(find "$_INSTALLER" -type f -path "${_INSTALLER%"/"}/install*" -perm -1 | head -n 1)"
@@ -67,6 +76,8 @@ resolveInstallers() {
 
 INSTALLERS="$(resolveInstallers "$COMPONENTS")"
 
+export MODE="${MODE:-"install"}" # possible modes: install, update
+
 print "$INSTALLERS" | while read _INST; do
-	cd "$(dirname -- "$_INST")" && vexec env CURRENT_COMPONENT="${_INST#"$SOURCE_DIR/"}" "$_INST"
+	cd "$(dirname -- "$_INST")" && dryexec env CURRENT_COMPONENT="${_INST#"$SOURCE_DIR/"}" "$_INST"
 done
