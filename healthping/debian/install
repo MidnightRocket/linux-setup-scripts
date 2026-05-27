@@ -1,127 +1,23 @@
 #!/bin/sh
-# shellcheck disable=SC2034 # Allow unused variables
 
 # --- README --- #
-# to run use 
-# curl -fsSL https://raw.githubusercontent.com/MidnightRocket/linux-update-scripts/main/healthping/debian/install | sudo sh
+# to run use
+# curl -fsSL https://github.com/MidnightRocket/linux-update-scripts/raw/refs/heads/main/installer | sudo COMPONENTS=healthping/debian sh
 #
 #
 # --- --- ---
 
-set -eu
-# POSIX compliant implementation
-# https://stackoverflow.com/a/52586842
-if [ "$(id -u)" -ne 0 ];then
-	echo "Requires root!"
-	exec sudo "$0" "$@"
-	# Automatically rerun script with root
-fi
-
-
-
-
-
-# CREDITS: https://github.com/MidnightRocket/posix-colors
-if [ -z "${NO_COLOR+x}" ] && { [ -t 1 ] && [ -t 2 ] || [ -n "${CLICOLOR_FORCE+x}" ];} ; then readonly T_USE_COLOR=true; else unset T_USE_COLOR; fi
-# Need to put this in variable on its own.
-# It cannot be directly in parameter expansion below because then it won't work in bash and ksh
-T_ESC="\033[" # ¯\_(ツ)_/¯
-readonly T_ESC="${T_USE_COLOR+"$T_ESC"}"
-###   -----   RESET FORMAT OR COLOR   -----   ###
-readonly TR="${T_ESC}${T_USE_COLOR+"0m"}"                  TR_F="${T_ESC}${T_USE_COLOR+"39m"}"               TR_B="${T_ESC}${T_USE_COLOR+"49m"}"
-###   -----   TEXT FORMATTING   -----   ###
-readonly T_BOLD="${T_ESC}${T_USE_COLOR+"1m"}"              T_DIM="${T_ESC}${T_USE_COLOR+"2m"}"               T_ITALIC="${T_ESC}${T_USE_COLOR+"3m"}"            T_UNDERLINE="${T_ESC}${T_USE_COLOR+"4m"}"
-readonly T_BLINK="${T_ESC}${T_USE_COLOR+"5m"}"             T_REVERSE="${T_ESC}${T_USE_COLOR+"7m"}"           T_HIDDEN="${T_ESC}${T_USE_COLOR+"8m"}"            T_STRIKE="${T_ESC}${T_USE_COLOR+"9m"}"
-###   -----   FOREGROUND COLORS   -----   ###
-readonly TF_BLACK="${T_ESC}${T_USE_COLOR+"30m"}"           TF_RED="${T_ESC}${T_USE_COLOR+"31m"}"             TF_GREEN="${T_ESC}${T_USE_COLOR+"32m"}"           TF_YELLOW="${T_ESC}${T_USE_COLOR+"33m"}"          TF_BLUE="${T_ESC}${T_USE_COLOR+"34m"}"            TF_MAGENTA="${T_ESC}${T_USE_COLOR+"35m"}"         TF_CYAN="${T_ESC}${T_USE_COLOR+"36m"}"            TF_DARK_GRAY="${T_ESC}${T_USE_COLOR+"90m"}"
-readonly TF_WHITE="${T_ESC}${T_USE_COLOR+"97m"}"           TF_BRIGHT_RED="${T_ESC}${T_USE_COLOR+"91m"}"      TF_BRIGHT_GREEN="${T_ESC}${T_USE_COLOR+"92m"}"    TF_BRIGHT_YELLOW="${T_ESC}${T_USE_COLOR+"93m"}"   TF_BRIGHT_BLUE="${T_ESC}${T_USE_COLOR+"94m"}"     TF_BRIGHT_MAGENTA="${T_ESC}${T_USE_COLOR+"95m"}"  TF_BRIGHT_CYAN="${T_ESC}${T_USE_COLOR+"96m"}"     TF_BRIGHT_GRAY="${T_ESC}${T_USE_COLOR+"37m"}"
-###   -----   BACKGROUND COLORS   -----   ###
-readonly TB_BLACK="${T_ESC}${T_USE_COLOR+"40m"}"           TB_RED="${T_ESC}${T_USE_COLOR+"41m"}"             TB_GREEN="${T_ESC}${T_USE_COLOR+"42m"}"           TB_YELLOW="${T_ESC}${T_USE_COLOR+"43m"}"          TB_BLUE="${T_ESC}${T_USE_COLOR+"44m"}"            TB_MAGENTA="${T_ESC}${T_USE_COLOR+"45m"}"         TB_CYAN="${T_ESC}${T_USE_COLOR+"46m"}"            TB_DARK_GRAY="${T_ESC}${T_USE_COLOR+"100m"}"
-readonly TB_WHITE="${T_ESC}${T_USE_COLOR+"107m"}"          TB_BRIGHT_RED="${T_ESC}${T_USE_COLOR+"101m"}"     TB_BRIGHT_GREEN="${T_ESC}${T_USE_COLOR+"102m"}"   TB_BRIGHT_YELLOW="${T_ESC}${T_USE_COLOR+"103m"}"  TB_BRIGHT_BLUE="${T_ESC}${T_USE_COLOR+"104m"}"    TB_BRIGHT_MAGENTA="${T_ESC}${T_USE_COLOR+"105m"}" TB_BRIGHT_CYAN="${T_ESC}${T_USE_COLOR+"106m"}"    TB_BRIGHT_GRAY="${T_ESC}${T_USE_COLOR+"47m"}"
-
-
-# Helper functions for echoing/printing text.
-# printf is fully posix compliant and is generally safer than echo.
-# These auto resets formating
-print() { printf "%b%b" "${1-""}" "${2-"${TR}\\n"}"; }
-stderr() { print "$@" 1>&2; }
-reportError() {
-	stderr "$2"
-	return "$1"
-}
-
-commandv() {
-	command -v "$1" || reportError "$?" "Executable '$1' not found"
-}
-
-
-
-
-while [ -n "${1+x}" ]; do
-	case "$1" in
-		--branch)
-			shift
-			BRANCH="$1"
-			;;
-		*)
-			stderr "Unsupported argument '$1'"
-			exit 2
-			;;
-	esac
-	shift
-done
-
-
-
-
-
+. "$INSTALLER_LIB_DIR/init"
+. "$INSTALLER_LIB_DIR/require-root"
 
 mktemp="$(commandv mktemp)"
 cat="$(commandv cat)"
 curl="$(commandv curl)"
 sha256sum="$(commandv sha256sum)"
 install="$(commandv install)"
-
-
-
-
-
-
-cleanupTmpDir() { rm -rf "$TMP_DIR"; }
-readonly TMP_SUFFIX="-healthcheck-installer"
-# On MacOS have to force parent dir to /tmp otherwise may path
-# be too long for some commands. E.g. SSH creating socket control master.
-TMP_DIR="$(mktemp -d --suffix "$TMP_SUFFIX" -p "/tmp")"; readonly TMP_DIR
-trap 'cleanupTmpDir; trap - EXIT' EXIT INT HUP TERM # Safely remove tmp dir on exit or interrupt
-
-
-# downloadFile url sha256sum save-path
-downloadFile() {
-	url="$1"
-	shasum="$2"
-	saveTo="$3"
-	mode="${4:-"755"}"
-
-	tmpFile="$("$mktemp" -p "$TMP_DIR")"
-	$curl -f "$url" -o "$tmpFile" || reportError "$?" "Could not download file from: $url"
-
-	if ! echo "$shasum $tmpFile" | "$sha256sum" --status -c; then
-		stderr "Failed to validate file from: $url"
-		stderr "File sha256sum mismatch!"
-		stderr "Got: $("$sha256sum" "$tmpFile")"
-		stderr "But wanted: $shasum"
-		exit 2
-	fi
-	
-	stderr "installing to: $saveTo"
-	"$install" --compare --mode "$mode" "$tmpFile" "$saveTo"
-}
+systemctl="$(commandv systemctl)"
 
 APP_NAME="healthping"
-
-baseUrl="https://raw.githubusercontent.com/MidnightRocket/linux-update-scripts/${BRANCH:-"main"}/${APP_NAME}/debian"
-
-
 
 binDir="/usr/local/bin"
 
@@ -130,26 +26,23 @@ configUrlsFile="$configDir/urls"
 if [ ! -d "$configDir" ]; then
 	echo "Creating config dir in: $configDir"
 	mkdir -m 755 "$configDir"
-	cat <<-EOF > "$configUrlsFile"
-	# This is a comment
-	# Put each url you want to ping on a line
+	install -m 600 "/dev/null" "$configUrlsFile"
+	cat <<-EOF >"$configUrlsFile"
+		# This is a comment
+		# Put each url you want to ping on a line
 	EOF
-	"${EDITOR:-"vi"}" "$configUrlsFile" || true # allow fail
 fi
-
-
 
 baseName="$APP_NAME"
 file="$binDir/$baseName"
-downloadFile "${baseUrl}/$baseName" fefd044b98c69f14a463f948fa41a62a545021a6c8fdbb4b296143faf7a0d69b "$file" 755
+install -m 755 "$baseName" "$file"
 
 USER="_${APP_NAME}"
-if ! id -u "$USER" > /dev/null 2>&1; then
+if ! id -u "$USER" >/dev/null 2>&1; then
+	cstderr "${TF_BRIGHT_GREEN}Creating user $USER"
 	useradd -U --home-dir /nonexistent -M -s /usr/sbin/nologin --system "$USER"
 fi
 chown "$USER:$USER" -R "$configDir"
-
-
 
 # --- Download systemd unit files
 unitsDir="/etc/systemd/system"
@@ -157,19 +50,15 @@ unitsDir="/etc/systemd/system"
 serviceUnit="${APP_NAME}.service"
 baseName="$serviceUnit"
 file="$unitsDir/$baseName"
-downloadFile "${baseUrl}/systemd/$baseName" 7642ea792540ab2f6aa67e014747b4d656886f7a1b4acffe30c7788ec3485a8b "$file" 644
+install -m 644 "systemd/$baseName" "$file"
 
 timerUnit="${APP_NAME}.timer"
 baseName="$timerUnit"
 file="$unitsDir/$baseName"
-downloadFile "${baseUrl}/systemd/$baseName" 5d418ebb8a53e87b4d1585b1ad03fab77c1486127439b949eb017170423c0d3c "$file" 644
+install -m 644 "systemd/$baseName" "$file"
 
+vexec "systemctl" enable --now "$timerUnit"
+"systemctl" status "$serviceUnit"
 
-systemctl="$(commandv systemctl)"
-"$systemctl" enable --now "$timerUnit"
-"$systemctl" status "$timerUnit"
-"$systemctl" start "$serviceUnit"
-"$systemctl" status "$serviceUnit"
-
-print
-print "Ping urls are configured in '$configUrlsFile'"
+stderr
+stderr "Ping urls are configured in '$configUrlsFile'"
