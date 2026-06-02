@@ -4,17 +4,10 @@ After=network-online.target
 Requires=network-online.target
 
 [Timer]
-# Every 3 minutes
-# Purposefully offset from whole numbers to prevent peeks
-# Use UTC to avoid problems with Daylight Savings Time
-OnCalendar=*:01/3:00 UTC
+OnUnitActiveSec=30s
+OnStartupSec=3m
 
-# RandomizedDelaySec cannot be greater than the interval
-# as this may result in greater intervals, than specified with OnCalandar
-RandomizedDelaySec=180
-FixedRandomDelay=true
-
-AccuracySec=1
+AccuracySec=1s
 
 [Install]
 WantedBy=timers.target
