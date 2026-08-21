@@ -10,10 +10,6 @@
 . "$INSTALLER_LIB_DIR/init"
 . "$INSTALLER_LIB_DIR/require-root"
 
-mktemp="$(commandv mktemp)"
-cat="$(commandv cat)"
-curl="$(commandv curl)"
-sha256sum="$(commandv sha256sum)"
 install="$(commandv install)"
 systemctl="$(commandv systemctl)"
 
