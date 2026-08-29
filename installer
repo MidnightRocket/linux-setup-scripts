@@ -24,8 +24,10 @@ fetch() {
 	fi
 }
 
-BASE_DOMAIN="${BASE_DOMAIN:-"github.com"}"
-BASE_URL="${BASE_URL:-"https://${BASE_DOMAIN}/MidnightRocket/linux-update-scripts"}"
+DOMAIN="${DOMAIN:-"github.com"}"
+USERNAME="${USERNAME:-"MidnightRocket"}"
+REPO_NAME="${REPO_NAME:-"linux-setup-scripts"}"
+BASE_URL="${BASE_URL:-"https://${DOMAIN}/$USERNAME/$REPO_NAME"}"
 
 BRANCH="${BRANCH:-"main"}"
 REF="${REF:-"heads/$BRANCH"}"
@@ -33,7 +35,7 @@ REF="${REF:-"heads/$BRANCH"}"
 export TAR_DOWNLOAD_PATH="${TAR_DOWNLOAD_PATH:-"$BASE_URL/archive/refs/${REF}.tar.gz"}"
 
 cleanupTmpDir() { rm -rf "$TMP_DIR"; }
-TMP_DIR="$(mktemp -d --suffix ".linux-update-scripts" -p "/tmp")"
+TMP_DIR="$(mktemp -d -p "/tmp")"
 readonly TMP_DIR
 export TMP_DIR
 trap 'cleanupTmpDir; trap - EXIT' EXIT INT HUP TERM # Safely remove tmp dir on exit or interrupt
