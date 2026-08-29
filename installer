@@ -48,4 +48,4 @@ cd "$SOURCE_DIR"
 fetch "$TAR_DOWNLOAD_PATH" | tar -xz -C "$SOURCE_DIR" --strip-components=1
 
 export INSTALLER_LIB_DIR="$SOURCE_DIR/lib"
-. "$INSTALLER_LIB_DIR/install"
+"$INSTALLER_LIB_DIR/install"
