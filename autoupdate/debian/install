@@ -1,10 +1,4 @@
 #!/bin/sh
-# --- README --- #
-# to run use
-# curl -fsSL https://github.com/MidnightRocket/linux-update-scripts/raw/refs/heads/main/installer | sudo COMPONENTS=debian sh
-#
-#
-# --- --- ---
 
 . "$INSTALLER_LIB_DIR/init"
 . "$INSTALLER_LIB_DIR/require-root"
