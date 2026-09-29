@@ -5,7 +5,7 @@ Requires=network-online.target
 
 [Timer]
 OnActiveSec=0s
-OnUnitActiveSec=30s
+OnUnitActiveSec=180s
 
 AccuracySec=1s
 
