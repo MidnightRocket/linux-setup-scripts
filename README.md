@@ -3,7 +3,7 @@ Scripts for simplifing and automating updates and installation of software.
 
 # Installation of `COMPONENTS`
 ```sh
-curl -fsSL "https://github.com/MidnightRocket/linux-setup-scripts/raw/branch/main/download" | COMPONENTS="autoupdate/debian,healthping/debian" sh
+curl -fsSL "https://github.com/MidnightRocket/linux-setup-scripts/raw/refs/heads/main/download" | COMPONENTS="autoupdate/debian,healthping/debian" sh
 ```
 
 # Specify custom `BRANCH` and `DOMAIN`
